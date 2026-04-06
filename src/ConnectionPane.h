@@ -44,6 +44,7 @@ public:
     void setSftpVisible(bool visible);
     void setTerminalFocusMode(bool enabled);
     void refreshThemeState();
+    void refreshTranslations();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
