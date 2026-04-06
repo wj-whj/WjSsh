@@ -1,6 +1,7 @@
 ﻿#include "ConnectionPane.h"
 
 #include "DebugTrace.h"
+#include "Localization.h"
 #include "UiChrome.h"
 
 #include <QApplication>
@@ -118,11 +119,12 @@ QString normalizedRemoteSuffix(const QString &name)
 QString remoteEntryTypeLabel(const RemoteEntry &entry)
 {
     if (entry.isDirectory) {
-        return QStringLiteral("目录");
+        return Localization::translateText(QStringLiteral("目录"));
     }
 
     const QString suffix = normalizedRemoteSuffix(entry.name);
-    return suffix.isEmpty() ? QStringLiteral("文件") : QStringLiteral("%1 文件").arg(suffix.toUpper());
+    return suffix.isEmpty() ? Localization::translateText(QStringLiteral("文件"))
+                            : Localization::translateText(QStringLiteral("%1 文件").arg(suffix.toUpper()));
 }
 
 QIcon remoteEntryIcon(const RemoteEntry &entry, QWidget *widget)
@@ -161,14 +163,15 @@ QIcon remoteEntryIcon(const RemoteEntry &entry, QWidget *widget)
 
 QString remoteEntryToolTip(const RemoteEntry &entry, const QString &typeLabel)
 {
-    return QStringLiteral("名称：%1\n完整路径：%2\n类型：%3\n大小：%4\n修改时间：%5\n权限：%6")
-        .arg(entry.name,
-             entry.path,
-             typeLabel,
-             entry.isDirectory ? QStringLiteral("-") : humanReadableSize(entry.size),
-             entry.modifiedAt.isValid() ? entry.modifiedAt.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
-                                        : QStringLiteral("-"),
-             entry.permissions);
+    return Localization::translateText(QStringLiteral("名称：%1\n完整路径：%2\n类型：%3\n大小：%4\n修改时间：%5\n权限：%6")
+                                           .arg(entry.name,
+                                                entry.path,
+                                                typeLabel,
+                                                entry.isDirectory ? QStringLiteral("-") : humanReadableSize(entry.size),
+                                                entry.modifiedAt.isValid()
+                                                    ? entry.modifiedAt.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
+                                                    : QStringLiteral("-"),
+                                                entry.permissions));
 }
 
 #if defined(Q_OS_WIN)
@@ -328,16 +331,16 @@ private:
 void localizeMessageBoxButtons(QMessageBox &box)
 {
     if (auto *button = box.button(QMessageBox::Ok)) {
-        button->setText(QStringLiteral("确定"));
+        button->setText(Localization::translateText(QStringLiteral("确定")));
     }
     if (auto *button = box.button(QMessageBox::Cancel)) {
-        button->setText(QStringLiteral("取消"));
+        button->setText(Localization::translateText(QStringLiteral("取消")));
     }
     if (auto *button = box.button(QMessageBox::Yes)) {
-        button->setText(QStringLiteral("是"));
+        button->setText(Localization::translateText(QStringLiteral("是")));
     }
     if (auto *button = box.button(QMessageBox::No)) {
-        button->setText(QStringLiteral("否"));
+        button->setText(Localization::translateText(QStringLiteral("否")));
     }
 }
 
@@ -348,7 +351,11 @@ QMessageBox::StandardButton execThemedMessageBox(QWidget *parent,
                                                  QMessageBox::StandardButtons buttons = QMessageBox::Ok,
                                                  QMessageBox::StandardButton defaultButton = QMessageBox::Ok)
 {
-    QMessageBox box(icon, title, text, buttons, parent);
+    QMessageBox box(icon,
+                    Localization::translateText(title),
+                    Localization::translateText(text),
+                    buttons,
+                    parent);
     box.setDefaultButton(defaultButton);
     localizeMessageBoxButtons(box);
     UiChrome::applyMessageBoxTheme(&box);
@@ -363,11 +370,11 @@ QString execThemedTextInput(QWidget *parent,
 {
     QInputDialog dialog(parent);
     dialog.setInputMode(QInputDialog::TextInput);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
+    dialog.setWindowTitle(Localization::translateText(title));
+    dialog.setLabelText(Localization::translateText(label));
     dialog.setTextValue(value);
-    dialog.setOkButtonText(QStringLiteral("确定"));
-    dialog.setCancelButtonText(QStringLiteral("取消"));
+    dialog.setOkButtonText(Localization::translateText(QStringLiteral("确定")));
+    dialog.setCancelButtonText(Localization::translateText(QStringLiteral("取消")));
     UiChrome::applyInputDialogTheme(&dialog);
 
     const bool ok = dialog.exec() == QDialog::Accepted;
@@ -379,7 +386,7 @@ QString execThemedTextInput(QWidget *parent,
 
 QStringList execThemedOpenFilesDialog(QWidget *parent, const QString &title)
 {
-    QFileDialog dialog(parent, title);
+    QFileDialog dialog(parent, Localization::translateText(title));
     dialog.setFileMode(QFileDialog::ExistingFiles);
     dialog.setOption(QFileDialog::DontUseNativeDialog, true);
     UiChrome::applyDialogTheme(&dialog);
@@ -388,7 +395,7 @@ QStringList execThemedOpenFilesDialog(QWidget *parent, const QString &title)
 
 QString execThemedExistingDirectoryDialog(QWidget *parent, const QString &title)
 {
-    QFileDialog dialog(parent, title);
+    QFileDialog dialog(parent, Localization::translateText(title));
     dialog.setFileMode(QFileDialog::Directory);
     dialog.setOption(QFileDialog::ShowDirsOnly, true);
     dialog.setOption(QFileDialog::DontUseNativeDialog, true);
@@ -400,7 +407,7 @@ QString execThemedExistingDirectoryDialog(QWidget *parent, const QString &title)
 
 QString execThemedSaveFileDialog(QWidget *parent, const QString &title, const QString &initialName)
 {
-    QFileDialog dialog(parent, title, initialName);
+    QFileDialog dialog(parent, Localization::translateText(title), initialName);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
     dialog.setFileMode(QFileDialog::AnyFile);
     dialog.setOption(QFileDialog::DontUseNativeDialog, true);
@@ -482,7 +489,8 @@ QString stripTerminalSequences(const QString &text)
 
 bool isTransferCancelledMessage(const QString &message)
 {
-    return message.contains(QStringLiteral("传输已取消")) || message.contains(QStringLiteral("取消"));
+    return message.contains(QStringLiteral("传输已取消")) || message.contains(QStringLiteral("取消"))
+           || message.contains(QStringLiteral("cancel"), Qt::CaseInsensitive);
 }
 
 struct PromptInfo {
@@ -520,6 +528,7 @@ ConnectionPane::ConnectionPane(const SessionProfile &profile, QWidget *parent)
     , m_remoteStatsMonitor(new RemoteServerStatsMonitor(this))
 {
     buildUi();
+    Localization::applyWidgetTexts(this);
 
     connect(&m_shellClient, &SshShellClient::outputReceived, this, &ConnectionPane::handleShellOutput);
     connect(&m_shellClient,
@@ -613,8 +622,10 @@ void ConnectionPane::setTerminalFocusMode(bool enabled)
 {
     if (enabled == m_terminalFocusMode) {
         if (m_fullScreenButton != nullptr) {
-            m_fullScreenButton->setText(enabled ? QStringLiteral("退出全屏 Esc") : QStringLiteral("全屏 F11"));
-            m_fullScreenButton->setToolTip(enabled ? QStringLiteral("退出终端全屏") : QStringLiteral("进入终端全屏"));
+            m_fullScreenButton->setText(
+                Localization::translateText(enabled ? QStringLiteral("退出全屏 Esc") : QStringLiteral("全屏 F11")));
+            m_fullScreenButton->setToolTip(Localization::translateText(
+                enabled ? QStringLiteral("退出终端全屏") : QStringLiteral("进入终端全屏")));
         }
         return;
     }
@@ -631,20 +642,37 @@ void ConnectionPane::setTerminalFocusMode(bool enabled)
     }
 
     if (m_fullScreenButton != nullptr) {
-        m_fullScreenButton->setText(enabled ? QStringLiteral("退出全屏 Esc") : QStringLiteral("全屏 F11"));
-        m_fullScreenButton->setToolTip(enabled ? QStringLiteral("退出终端全屏") : QStringLiteral("进入终端全屏"));
+        m_fullScreenButton->setText(
+            Localization::translateText(enabled ? QStringLiteral("退出全屏 Esc") : QStringLiteral("全屏 F11")));
+        m_fullScreenButton->setToolTip(
+            Localization::translateText(enabled ? QStringLiteral("退出终端全屏") : QStringLiteral("进入终端全屏")));
     }
 }
 
 void ConnectionPane::refreshThemeState()
 {
-    m_statusBadge->setText(m_connected ? QStringLiteral("在线") : QStringLiteral("离线"));
+    m_statusBadge->setText(Localization::translateText(m_connected ? QStringLiteral("在线")
+                                                                   : QStringLiteral("离线")));
     m_statusBadge->setStyleSheet(
         UiChrome::themeMode() == UiChrome::ThemeMode::Dark
             ? (m_connected ? QStringLiteral("background:#1A232B;color:#F7FAFC;border:1px solid #4B5C6A;border-radius:15px;padding:0 12px;")
                            : QStringLiteral("background:#15181C;color:#C2C9CF;border:1px solid #2D343C;border-radius:15px;padding:0 12px;"))
             : (m_connected ? QStringLiteral("background:#EAF7EE;color:#1D6B39;border:1px solid #A9D5B6;border-radius:15px;padding:0 12px;")
                            : QStringLiteral("background:#F3F5F7;color:#67727E;border:1px solid #D4DCE3;border-radius:15px;padding:0 12px;")));
+}
+
+void ConnectionPane::refreshTranslations()
+{
+    Localization::applyWidgetTexts(this);
+    refreshThemeState();
+    updateSftpToggleButton();
+    updateHeaderPathLabel();
+
+    if (m_connected && !m_currentRemotePath.isEmpty()) {
+        refreshDirectory(m_currentRemotePath, false);
+    } else {
+        updateSelectionDependentUi();
+    }
 }
 
 bool ConnectionPane::connectToHost(const QString &secret,
@@ -1082,7 +1110,7 @@ void ConnectionPane::appendConsoleText(const QString &text)
         return;
     }
 
-    m_consoleOutput->appendLocalMessage(text);
+    m_consoleOutput->appendLocalMessage(Localization::translateText(text));
 }
 
 void ConnectionPane::refreshDirectory(const QString &path, bool syncShell)
@@ -1202,8 +1230,8 @@ void ConnectionPane::updateSftpToggleButton()
 {
     const bool visible = m_sftpPanel != nullptr && m_sftpPanel->isVisible();
     m_sftpExpanded = visible;
-    m_toggleSftpButton->setText(visible ? QStringLiteral("隐藏 SFTP")
-                                        : QStringLiteral("显示 SFTP"));
+    m_toggleSftpButton->setText(Localization::translateText(
+        visible ? QStringLiteral("隐藏 SFTP") : QStringLiteral("显示 SFTP")));
 }
 
 void ConnectionPane::updateHeaderPathLabel()
@@ -1222,8 +1250,9 @@ void ConnectionPane::updateHeaderPathLabel()
             label = QStringLiteral("已连接");
         }
     }
-    m_remotePathLabel->setText(label);
-    m_remotePathLabel->setToolTip(label);
+    const QString translated = Localization::translateText(label);
+    m_remotePathLabel->setText(translated);
+    m_remotePathLabel->setToolTip(translated);
 }
 
 QString ConnectionPane::normalizePromptPath(QString promptPath, const QString &promptUser) const
@@ -1399,8 +1428,12 @@ bool ConnectionPane::runTransferOperation(
 
     QScopedValueRollback<bool> busyGuard(m_transferInProgress, true);
 
-    QProgressDialog progressDialog(initialLabel, QStringLiteral("取消"), 0, 0, this);
-    progressDialog.setWindowTitle(title);
+    QProgressDialog progressDialog(Localization::translateText(initialLabel),
+                                   Localization::translateText(QStringLiteral("取消")),
+                                   0,
+                                   0,
+                                   this);
+    progressDialog.setWindowTitle(Localization::translateText(title));
     progressDialog.setWindowModality(Qt::WindowModal);
     progressDialog.setMinimumDuration(0);
     progressDialog.setAutoClose(false);
@@ -1448,7 +1481,7 @@ bool ConnectionPane::runTransferOperation(
             progressDialog.setRange(0, 0);
         }
 
-        progressDialog.setLabelText(label);
+        progressDialog.setLabelText(Localization::translateText(label));
         QApplication::processEvents();
         updateTimer.restart();
         return !progressDialog.wasCanceled();
@@ -2096,10 +2129,10 @@ void ConnectionPane::showRemoteContextMenu(const QPoint &position)
     const bool hasSelection = !remotePath.isEmpty();
 
     QMenu menu(this);
-    QAction *refreshAction = menu.addAction(QStringLiteral("刷新"));
-    QAction *uploadFileAction = menu.addAction(QStringLiteral("上传文件"));
-    QAction *uploadDirectoryAction = menu.addAction(QStringLiteral("上传目录"));
-    QAction *pasteAction = menu.addAction(QStringLiteral("从剪贴板导入"));
+    QAction *refreshAction = menu.addAction(Localization::translateText(QStringLiteral("刷新")));
+    QAction *uploadFileAction = menu.addAction(Localization::translateText(QStringLiteral("上传文件")));
+    QAction *uploadDirectoryAction = menu.addAction(Localization::translateText(QStringLiteral("上传目录")));
+    QAction *pasteAction = menu.addAction(Localization::translateText(QStringLiteral("从剪贴板导入")));
     menu.addSeparator();
 
     refreshAction->setEnabled(m_connected);
@@ -2131,21 +2164,21 @@ void ConnectionPane::showRemoteContextMenu(const QPoint &position)
     QAction *deleteAction = nullptr;
 
     if (hasSelection && isDirectory) {
-        openAction = menu.addAction(QStringLiteral("打开"));
+        openAction = menu.addAction(Localization::translateText(QStringLiteral("打开")));
     }
     if (hasSelection) {
-        copyAction = menu.addAction(QStringLiteral("复制导出"));
-        downloadAction = menu.addAction(QStringLiteral("下载"));
+        copyAction = menu.addAction(Localization::translateText(QStringLiteral("复制导出")));
+        downloadAction = menu.addAction(Localization::translateText(QStringLiteral("下载")));
         if (!isDirectory) {
-            previewAction = menu.addAction(QStringLiteral("预览/编辑"));
+            previewAction = menu.addAction(Localization::translateText(QStringLiteral("预览/编辑")));
         }
-        renameAction = menu.addAction(QStringLiteral("重命名"));
-        deleteAction = menu.addAction(QStringLiteral("删除"));
+        renameAction = menu.addAction(Localization::translateText(QStringLiteral("重命名")));
+        deleteAction = menu.addAction(Localization::translateText(QStringLiteral("删除")));
     }
 
     menu.addSeparator();
-    QAction *newFolderAction = menu.addAction(QStringLiteral("新建目录"));
-    QAction *newFileAction = menu.addAction(QStringLiteral("新建文件"));
+    QAction *newFolderAction = menu.addAction(Localization::translateText(QStringLiteral("新建目录")));
+    QAction *newFileAction = menu.addAction(Localization::translateText(QStringLiteral("新建文件")));
     newFolderAction->setEnabled(m_connected);
     newFileAction->setEnabled(m_connected);
 
