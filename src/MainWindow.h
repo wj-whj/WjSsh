@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ConnectionPane.h"
+#include "Localization.h"
 #include "SessionEditorDialog.h"
 #include "SessionRepository.h"
 #include "UiChrome.h"
@@ -45,6 +46,7 @@ private slots:
     void closeTab(int index);
     void handleCurrentTabChanged(int index);
     void toggleThemeMode();
+    void toggleLanguage();
     void toggleSidebar();
     void toggleCurrentTerminalFullScreen();
     void handlePaneStatusMessage(const QString &message);
@@ -60,7 +62,9 @@ private:
     void saveUiPreferences() const;
     void buildUi();
     void applyTheme();
+    void applyLanguage();
     void setThemeMode(UiChrome::ThemeMode mode);
+    void setLanguage(Localization::Language language);
     void setSidebarExpanded(bool expanded);
     void updateSidebarUi();
     void buildStatusBarWidgets();
@@ -105,6 +109,7 @@ private:
     QListWidget *m_sessionList = nullptr;
     QPushButton *m_sidebarToggleButton = nullptr;
     QPushButton *m_themeToggleButton = nullptr;
+    QPushButton *m_languageToggleButton = nullptr;
     QPushButton *m_addSessionButton = nullptr;
     QPushButton *m_editSessionButton = nullptr;
     QPushButton *m_deleteSessionButton = nullptr;
@@ -121,6 +126,7 @@ private:
     QLabel *m_diskStatusLabel = nullptr;
     QLabel *m_networkStatusLabel = nullptr;
     UiChrome::ThemeMode m_themeMode = UiChrome::ThemeMode::Light;
+    Localization::Language m_language = Localization::Language::Chinese;
     bool m_sidebarExpanded = true;
     bool m_terminalFullScreen = false;
     Qt::WindowStates m_windowStateBeforeTerminalFullScreen = Qt::WindowNoState;
@@ -128,4 +134,5 @@ private:
     bool m_windowChromeRefreshPending = false;
     bool m_titleBarDragging = false;
     QPoint m_titleBarDragOffset;
+    QString m_statusMessageSource;
 };
