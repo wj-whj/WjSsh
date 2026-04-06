@@ -36,7 +36,7 @@ jobs:
 
       - name: Build release package
         shell: powershell
-        run: .\\build_release.ps1
+        run: .\build_release.ps1
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -44,6 +44,7 @@ jobs:
           name: WjSsh-win64
           path: |
             dist/WjSsh-win64.zip
+            dist/WjSsh-Setup.exe
             dist/WjSsh/**
 
       - name: Publish GitHub release
@@ -51,5 +52,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: .github/RELEASE_TEMPLATE.md
-          files: dist/WjSsh-win64.zip
+          files: |
+            dist/WjSsh-win64.zip
+            dist/WjSsh-Setup.exe
           generate_release_notes: true
