@@ -6,7 +6,12 @@
 ## Included
 
 - Windows portable package: `WjSsh-win64.zip`
+- Windows installer: `WjSsh-Setup.exe`
 - Main executable: `WjSsh.exe`
+
+## Language Support
+
+- User interface language switching between Chinese and English
 
 ## Notes
 
