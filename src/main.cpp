@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "Localization.h"
 
 #include "UiChrome.h"
 
@@ -14,6 +15,8 @@ int main(int argc, char *argv[])
     app.setApplicationName("WjSsh");
     app.setApplicationDisplayName("WjSsh");
     app.setStyle("Fusion");
+    const QString savedLanguage = QSettings().value(QStringLiteral("ui/language"), QStringLiteral("zh")).toString();
+    Localization::setLanguage(Localization::languageFromKey(savedLanguage));
     const QString savedTheme = QSettings().value(QStringLiteral("ui/theme"), QStringLiteral("light")).toString();
     UiChrome::setThemeMode(savedTheme.compare(QStringLiteral("dark"), Qt::CaseInsensitive) == 0
                                ? UiChrome::ThemeMode::Dark
