@@ -27,6 +27,8 @@ qt_add_executable(WjSsh WIN32
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SshShellClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CommandLineEdit.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CommandLineEdit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Localization.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Localization.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TerminalView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TerminalView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SftpClient.h
