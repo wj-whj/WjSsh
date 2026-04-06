@@ -1,5 +1,6 @@
 #include "RemoteFileEditorDialog.h"
 
+#include "Localization.h"
 #include "UiChrome.h"
 
 #include <QDialogButtonBox>
@@ -20,15 +21,14 @@ bool looksBinary(const QByteArray &data)
     const int sample = qMin(data.size(), 2048);
     for (int index = 0; index < sample; ++index) {
         const char value = data.at(index);
-        const bool allowed =
-            value == '\n' || value == '\r' || value == '\t' || (value >= 32 && value != 127);
+        const bool allowed = value == '\n' || value == '\r' || value == '\t' || (value >= 32 && value != 127);
         if (!allowed) {
             ++suspicious;
         }
     }
     return sample > 0 && suspicious > sample / 10;
 }
-}
+} // namespace
 
 RemoteFileEditorDialog::RemoteFileEditorDialog(QWidget *parent)
     : QDialog(parent)
@@ -64,6 +64,7 @@ RemoteFileEditorDialog::RemoteFileEditorDialog(QWidget *parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &RemoteFileEditorDialog::reject);
 
     UiChrome::applyDialogTheme(this);
+    Localization::applyWidgetTexts(this);
 }
 
 void RemoteFileEditorDialog::setFilePath(const QString &path)
@@ -77,8 +78,9 @@ void RemoteFileEditorDialog::setContent(const QByteArray &data)
     m_binary = looksBinary(data);
 
     if (m_binary) {
-        m_hintLabel->setText(QStringLiteral("检测到该文件很可能是二进制内容，已切换为只读预览。建议直接下载到本地处理。"));
-        m_editor->setPlainText(QStringLiteral("[二进制内容已隐藏]"));
+        m_hintLabel->setText(Localization::translateText(
+            QStringLiteral("检测到该文件很可能是二进制内容，已切换为只读预览。建议直接下载到本地处理。")));
+        m_editor->setPlainText(Localization::translateText(QStringLiteral("[二进制内容已隐藏]")));
         m_editor->setReadOnly(true);
         m_saveButton->setEnabled(false);
         return;
@@ -87,7 +89,8 @@ void RemoteFileEditorDialog::setContent(const QByteArray &data)
     m_editor->setReadOnly(false);
     m_saveButton->setEnabled(true);
     m_editor->setPlainText(decodeBytes(data));
-    m_hintLabel->setText(QStringLiteral("文本内容已载入。保存时会以 UTF-8 编码写回远端文件。"));
+    m_hintLabel->setText(
+        Localization::translateText(QStringLiteral("文本内容已载入。保存时会以 UTF-8 编码写回远端文件。")));
 }
 
 QByteArray RemoteFileEditorDialog::content() const
