@@ -1,5 +1,6 @@
 #include "SessionEditorDialog.h"
 
+#include "Localization.h"
 #include "UiChrome.h"
 
 #include <QDialogButtonBox>
@@ -130,6 +131,7 @@ SessionEditorDialog::SessionEditorDialog(QWidget *parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &SessionEditorDialog::reject);
 
     UiChrome::applyDialogTheme(this);
+    Localization::applyWidgetTexts(this);
     updateAuthModeUi();
 }
 
@@ -166,7 +168,7 @@ SessionProfile SessionEditorDialog::profile() const
 
 void SessionEditorDialog::browsePrivateKey()
 {
-    QFileDialog dialog(this, QStringLiteral("选择私钥文件"));
+    QFileDialog dialog(this, Localization::translateText(QStringLiteral("选择私钥文件")));
     dialog.setFileMode(QFileDialog::ExistingFile);
     dialog.setOption(QFileDialog::DontUseNativeDialog, true);
     UiChrome::applyDialogTheme(&dialog);
@@ -188,11 +190,11 @@ void SessionEditorDialog::validateAndAccept()
 
     auto showWarning = [this](const QString &message) {
         QMessageBox box(QMessageBox::Warning,
-                        QStringLiteral("信息不完整"),
-                        message,
+                        Localization::translateText(QStringLiteral("信息不完整")),
+                        Localization::translateText(message),
                         QMessageBox::Ok,
                         this);
-        box.button(QMessageBox::Ok)->setText(QStringLiteral("确定"));
+        box.button(QMessageBox::Ok)->setText(Localization::translateText(QStringLiteral("确定")));
         UiChrome::applyMessageBoxTheme(&box);
         box.exec();
     };
