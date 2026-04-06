@@ -654,6 +654,10 @@ try {
 $index = 0
 foreach ($file in $files) {
     $index++
+    if ($file.RepoPath -like ".github/workflows/*") {
+        Write-Warning ("Skipping {0} in contents API fallback because GitHub workflow updates require a token with workflow permission." -f $file.RepoPath)
+        continue
+    }
     Write-Host ("[{0}/{1}] {2} (contents API)" -f $index, $files.Count, $file.RepoPath)
     $bytes = [IO.File]::ReadAllBytes($file.FullName)
     Upsert-ContentFile -RepoOwner $Owner -RepoName $RepositoryName -RepoPath $file.RepoPath -Bytes $bytes -BranchName $branchName -Message $CommitMessage -Headers $headers | Out-Null
