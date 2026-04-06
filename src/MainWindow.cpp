@@ -1,6 +1,7 @@
 ﻿#include "MainWindow.h"
 
 #include "DebugTrace.h"
+#include "Localization.h"
 #include "UiChrome.h"
 
 #include <QApplication>
@@ -77,16 +78,16 @@ UiChrome::ThemeMode themeModeFromKey(const QString &value)
 void localizeMessageBoxButtons(QMessageBox &box)
 {
     if (auto *button = box.button(QMessageBox::Ok)) {
-        button->setText(QStringLiteral("确定"));
+        button->setText(Localization::translateText(QStringLiteral("确定")));
     }
     if (auto *button = box.button(QMessageBox::Cancel)) {
-        button->setText(QStringLiteral("取消"));
+        button->setText(Localization::translateText(QStringLiteral("取消")));
     }
     if (auto *button = box.button(QMessageBox::Yes)) {
-        button->setText(QStringLiteral("是"));
+        button->setText(Localization::translateText(QStringLiteral("是")));
     }
     if (auto *button = box.button(QMessageBox::No)) {
-        button->setText(QStringLiteral("否"));
+        button->setText(Localization::translateText(QStringLiteral("否")));
     }
 }
 
@@ -98,10 +99,14 @@ QMessageBox::StandardButton execThemedMessageBox(QWidget *parent,
                                                  QMessageBox::StandardButton defaultButton = QMessageBox::Ok,
                                                  const QString &informativeText = QString())
 {
-    QMessageBox box(icon, title, text, buttons, parent);
+    QMessageBox box(icon,
+                    Localization::translateText(title),
+                    Localization::translateText(text),
+                    buttons,
+                    parent);
     box.setDefaultButton(defaultButton);
     if (!informativeText.isEmpty()) {
-        box.setInformativeText(informativeText);
+        box.setInformativeText(Localization::translateText(informativeText));
     }
     localizeMessageBoxButtons(box);
     UiChrome::applyMessageBoxTheme(&box);
@@ -117,12 +122,12 @@ QString execThemedTextInput(QWidget *parent,
 {
     QInputDialog dialog(parent);
     dialog.setInputMode(QInputDialog::TextInput);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
+    dialog.setWindowTitle(Localization::translateText(title));
+    dialog.setLabelText(Localization::translateText(label));
     dialog.setTextEchoMode(echoMode);
     dialog.setTextValue(textValue);
-    dialog.setOkButtonText(QStringLiteral("确定"));
-    dialog.setCancelButtonText(QStringLiteral("取消"));
+    dialog.setOkButtonText(Localization::translateText(QStringLiteral("确定")));
+    dialog.setCancelButtonText(Localization::translateText(QStringLiteral("取消")));
     UiChrome::applyInputDialogTheme(&dialog);
 
     const bool ok = dialog.exec() == QDialog::Accepted;
@@ -140,6 +145,7 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
     loadUiPreferences();
     buildUi();
+    applyLanguage();
     applyTheme();
     updateRemoteStatsUi();
     loadProfiles();
@@ -389,7 +395,9 @@ void MainWindow::loadUiPreferences()
 {
     QSettings settings;
     m_themeMode = themeModeFromKey(settings.value(QStringLiteral("ui/theme"), QStringLiteral("light")).toString());
+    m_language = Localization::languageFromKey(settings.value(QStringLiteral("ui/language"), QStringLiteral("zh")).toString());
     m_sidebarExpanded = settings.value(QStringLiteral("ui/sidebarExpanded"), true).toBool();
+    Localization::setLanguage(m_language);
     UiChrome::setThemeMode(m_themeMode);
 }
 
@@ -397,6 +405,7 @@ void MainWindow::saveUiPreferences() const
 {
     QSettings settings;
     settings.setValue(QStringLiteral("ui/theme"), themeModeKey(m_themeMode));
+    settings.setValue(QStringLiteral("ui/language"), Localization::languageKey(m_language));
     settings.setValue(QStringLiteral("ui/sidebarExpanded"), m_sidebarExpanded);
 }
 
@@ -472,9 +481,12 @@ void MainWindow::buildUi()
     sidebarHeader->setSpacing(8);
     m_sidebarToggleButton = new QPushButton(m_sidebar);
     m_sidebarToggleButton->setObjectName("sidebarUtilityButton");
+    m_languageToggleButton = new QPushButton(m_sidebar);
+    m_languageToggleButton->setObjectName("sidebarUtilityButton");
     m_themeToggleButton = new QPushButton(m_sidebar);
     m_themeToggleButton->setObjectName("sidebarUtilityButton");
     sidebarHeader->addWidget(m_sidebarToggleButton);
+    sidebarHeader->addWidget(m_languageToggleButton);
     sidebarHeader->addStretch();
     sidebarHeader->addWidget(m_themeToggleButton);
     sidebarLayout->addLayout(sidebarHeader);
@@ -587,6 +599,7 @@ void MainWindow::buildUi()
     connect(m_connectButton, &QPushButton::clicked, this, &MainWindow::connectSelectedSession);
     connect(m_closeTabButton, &QPushButton::clicked, this, &MainWindow::closeCurrentTab);
     connect(m_sidebarToggleButton, &QPushButton::clicked, this, &MainWindow::toggleSidebar);
+    connect(m_languageToggleButton, &QPushButton::clicked, this, &MainWindow::toggleLanguage);
     connect(m_themeToggleButton, &QPushButton::clicked, this, &MainWindow::toggleThemeMode);
     connect(m_sessionList, &QListWidget::itemDoubleClicked, this, [this]() { connectSelectedSession(); });
     connect(m_sessionList, &QListWidget::currentRowChanged, this, &MainWindow::updateSelectionDependentUi);
@@ -919,7 +932,10 @@ void MainWindow::updateTitleBarUi()
     m_titleBarTitleLabel->setText(windowTitle());
     const bool maximized = isMaximized() && !isFullScreen();
     m_maximizeWindowButton->setText(maximized ? QStringLiteral("❐") : QStringLiteral("□"));
-    m_maximizeWindowButton->setToolTip(maximized ? QStringLiteral("还原") : QStringLiteral("最大化"));
+    m_minimizeWindowButton->setToolTip(Localization::translateText(QStringLiteral("最小化")));
+    m_maximizeWindowButton->setToolTip(Localization::translateText(maximized ? QStringLiteral("还原")
+                                                                             : QStringLiteral("最大化")));
+    m_closeWindowButton->setToolTip(Localization::translateText(QStringLiteral("关闭")));
     m_titleBar->setVisible(!m_terminalFullScreen);
 }
 
@@ -948,10 +964,47 @@ void MainWindow::setThemeMode(UiChrome::ThemeMode mode)
     saveUiPreferences();
 }
 
+void MainWindow::applyLanguage()
+{
+    Localization::setLanguage(m_language);
+    Localization::applyWidgetTexts(this);
+    updateTitleBarUi();
+    updateSidebarUi();
+    updateRemoteStatsUi();
+
+    for (int index = 0; index < m_tabWidget->count(); ++index) {
+        if (auto *pane = qobject_cast<ConnectionPane *>(m_tabWidget->widget(index))) {
+            pane->refreshTranslations();
+            updateTabLabel(pane);
+        }
+    }
+
+    setStatusMessage(m_statusMessageSource.isEmpty() ? QStringLiteral("就绪") : m_statusMessageSource);
+}
+
+void MainWindow::setLanguage(Localization::Language language)
+{
+    if (m_language == language) {
+        applyLanguage();
+        return;
+    }
+
+    m_language = language;
+    Localization::setLanguage(m_language);
+    applyLanguage();
+    saveUiPreferences();
+}
+
 void MainWindow::toggleThemeMode()
 {
     setThemeMode(m_themeMode == UiChrome::ThemeMode::Dark ? UiChrome::ThemeMode::Light
                                                           : UiChrome::ThemeMode::Dark);
+}
+
+void MainWindow::toggleLanguage()
+{
+    setLanguage(m_language == Localization::Language::Chinese ? Localization::Language::English
+                                                              : Localization::Language::Chinese);
 }
 
 void MainWindow::setSidebarExpanded(bool expanded)
@@ -974,7 +1027,7 @@ void MainWindow::toggleSidebar()
 void MainWindow::updateSidebarUi()
 {
     if (m_sidebar == nullptr || m_sidebarContent == nullptr || m_sidebarToggleButton == nullptr
-        || m_themeToggleButton == nullptr) {
+        || m_themeToggleButton == nullptr || m_languageToggleButton == nullptr) {
         return;
     }
 
@@ -987,22 +1040,38 @@ void MainWindow::updateSidebarUi()
     m_sidebarContent->setVisible(m_sidebarExpanded);
     m_sidebar->setMinimumWidth(m_sidebarExpanded ? 290 : 78);
     m_sidebar->setMaximumWidth(m_sidebarExpanded ? 340 : 78);
-    m_sidebarToggleButton->setText(m_sidebarExpanded ? QStringLiteral("收起侧栏") : QStringLiteral("展开"));
-    m_sidebarToggleButton->setToolTip(m_sidebarExpanded ? QStringLiteral("收起左侧会话栏") : QStringLiteral("展开左侧会话栏"));
+    m_sidebarToggleButton->setText(
+        Localization::translateText(m_sidebarExpanded ? QStringLiteral("收起侧栏") : QStringLiteral("展开")));
+    m_sidebarToggleButton->setToolTip(
+        Localization::translateText(m_sidebarExpanded ? QStringLiteral("收起左侧会话栏")
+                                                      : QStringLiteral("展开左侧会话栏")));
+    m_languageToggleButton->setText(
+        m_sidebarExpanded
+            ? Localization::translateText(m_language == Localization::Language::Chinese ? QStringLiteral("中文")
+                                                                                         : QStringLiteral("英文"))
+            : Localization::translateText(m_language == Localization::Language::Chinese ? QStringLiteral("中")
+                                                                                         : QStringLiteral("EN")));
+    m_languageToggleButton->setToolTip(
+        Localization::translateText(m_language == Localization::Language::Chinese ? QStringLiteral("切换到英文界面")
+                                                                                   : QStringLiteral("切换到中文界面")));
     m_themeToggleButton->setText(
-        m_sidebarExpanded ? (m_themeMode == UiChrome::ThemeMode::Dark ? QStringLiteral("浅色主题")
-                                                                      : QStringLiteral("黑色主题"))
-                          : (m_themeMode == UiChrome::ThemeMode::Dark ? QStringLiteral("浅")
-                                                                      : QStringLiteral("黑")));
-    m_themeToggleButton->setToolTip(m_themeMode == UiChrome::ThemeMode::Dark ? QStringLiteral("切换到浅色主题")
-                                                                              : QStringLiteral("切换到黑色主题"));
+        Localization::translateText(
+            m_sidebarExpanded ? (m_themeMode == UiChrome::ThemeMode::Dark ? QStringLiteral("浅色主题")
+                                                                          : QStringLiteral("黑色主题"))
+                              : (m_themeMode == UiChrome::ThemeMode::Dark ? QStringLiteral("浅")
+                                                                          : QStringLiteral("黑"))));
+    m_themeToggleButton->setToolTip(
+        Localization::translateText(m_themeMode == UiChrome::ThemeMode::Dark ? QStringLiteral("切换到浅色主题")
+                                                                              : QStringLiteral("切换到黑色主题")));
 }
 
 void MainWindow::setStatusMessage(const QString &message)
 {
+    m_statusMessageSource = message;
     if (m_statusMessageLabel != nullptr) {
-        m_statusMessageLabel->setText(message);
-        m_statusMessageLabel->setToolTip(message);
+        const QString translated = Localization::translateText(message);
+        m_statusMessageLabel->setText(translated);
+        m_statusMessageLabel->setToolTip(translated);
     }
 }
 
@@ -1029,12 +1098,13 @@ void MainWindow::updateRemoteStatsUi()
     }
 
     auto applyPlaceholder = [this](const QString &text, const QString &toolTip) {
-        m_cpuStatusLabel->setText(text);
-        m_memoryStatusLabel->setText(QStringLiteral("内存 --"));
-        m_diskStatusLabel->setText(QStringLiteral("磁盘 --"));
-        m_networkStatusLabel->setText(QStringLiteral("网络 --"));
+        m_cpuStatusLabel->setText(Localization::translateText(text));
+        m_memoryStatusLabel->setText(Localization::translateText(QStringLiteral("内存 --")));
+        m_diskStatusLabel->setText(Localization::translateText(QStringLiteral("磁盘 --")));
+        m_networkStatusLabel->setText(Localization::translateText(QStringLiteral("网络 --")));
+        const QString translatedToolTip = Localization::translateText(toolTip);
         for (QLabel *label : {m_cpuStatusLabel, m_memoryStatusLabel, m_diskStatusLabel, m_networkStatusLabel}) {
-            label->setToolTip(toolTip);
+            label->setToolTip(translatedToolTip);
         }
     };
 
@@ -1059,22 +1129,25 @@ void MainWindow::updateRemoteStatsUi()
     const SystemStatsMonitor::Sample sample = pane->latestRemoteStats();
     const QString toolTip = pane->remoteStatsStateText().isEmpty() ? sample.summaryText : pane->remoteStatsStateText();
 
-    m_cpuStatusLabel->setText(QStringLiteral("CPU %1").arg(formatPercentCompact(sample.cpuUsagePercent)));
-    m_memoryStatusLabel->setText(sample.memoryTotalBytes > 0
-                                     ? QStringLiteral("内存 %1/%2")
-                                           .arg(formatBytesCompact(sample.memoryUsedBytes),
-                                                formatBytesCompact(sample.memoryTotalBytes))
-                                     : QStringLiteral("内存 --"));
-    m_diskStatusLabel->setText(sample.diskTotalBytes > 0
-                                   ? QStringLiteral("磁盘 %1/%2")
-                                         .arg(formatBytesCompact(sample.diskUsedBytes),
-                                              formatBytesCompact(sample.diskTotalBytes))
-                                   : QStringLiteral("磁盘 --"));
-    m_networkStatusLabel->setText(QStringLiteral("网络 ↑%1 ↓%2")
-                                      .arg(formatRateCompact(sample.networkUploadBytesPerSecond),
-                                           formatRateCompact(sample.networkDownloadBytesPerSecond)));
+    m_cpuStatusLabel->setText(Localization::translateText(
+        QStringLiteral("CPU %1").arg(formatPercentCompact(sample.cpuUsagePercent))));
+    m_memoryStatusLabel->setText(Localization::translateText(sample.memoryTotalBytes > 0
+                                                                 ? QStringLiteral("内存 %1/%2")
+                                                                       .arg(formatBytesCompact(sample.memoryUsedBytes),
+                                                                            formatBytesCompact(sample.memoryTotalBytes))
+                                                                 : QStringLiteral("内存 --")));
+    m_diskStatusLabel->setText(Localization::translateText(sample.diskTotalBytes > 0
+                                                               ? QStringLiteral("磁盘 %1/%2")
+                                                                     .arg(formatBytesCompact(sample.diskUsedBytes),
+                                                                          formatBytesCompact(sample.diskTotalBytes))
+                                                               : QStringLiteral("磁盘 --")));
+    m_networkStatusLabel->setText(Localization::translateText(
+        QStringLiteral("网络 ↑%1 ↓%2")
+            .arg(formatRateCompact(sample.networkUploadBytesPerSecond),
+                 formatRateCompact(sample.networkDownloadBytesPerSecond))));
+    const QString translatedToolTip = Localization::translateText(toolTip);
     for (QLabel *label : {m_cpuStatusLabel, m_memoryStatusLabel, m_diskStatusLabel, m_networkStatusLabel}) {
-        label->setToolTip(toolTip);
+        label->setToolTip(translatedToolTip);
     }
 }
 
@@ -1274,12 +1347,12 @@ bool MainWindow::confirmHostKey(const QString &title,
 
     QMessageBox dialog(const_cast<MainWindow *>(this));
     dialog.setIcon(QMessageBox::Question);
-    dialog.setWindowTitle(title);
-    dialog.setText(message);
-    dialog.setInformativeText(QStringLiteral("SHA256 指纹：%1").arg(fingerprint));
+    dialog.setWindowTitle(Localization::translateText(title));
+    dialog.setText(Localization::translateText(message));
+    dialog.setInformativeText(Localization::translateText(QStringLiteral("SHA256 指纹：%1").arg(fingerprint)));
     dialog.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    dialog.button(QMessageBox::Yes)->setText(QStringLiteral("信任并继续"));
-    dialog.button(QMessageBox::No)->setText(QStringLiteral("取消"));
+    dialog.button(QMessageBox::Yes)->setText(Localization::translateText(QStringLiteral("信任并继续")));
+    dialog.button(QMessageBox::No)->setText(Localization::translateText(QStringLiteral("取消")));
     UiChrome::applyMessageBoxTheme(&dialog);
     return dialog.exec() == QMessageBox::Yes;
 }
@@ -1319,6 +1392,7 @@ void MainWindow::addConnectedPane(ConnectionPane *pane, const QString &baseTitle
 
     const int tabIndex = m_tabWidget->addTab(pane, baseTitle);
     m_tabWidget->setCurrentIndex(tabIndex);
+    pane->refreshTranslations();
     updateTabLabel(pane);
     updateWorkspaceState();
     updateTabScrollButtons();
@@ -1335,7 +1409,8 @@ void MainWindow::updateTabLabel(ConnectionPane *pane)
     }
 
     const QString baseTitle = pane->property("tabBaseTitle").toString();
-    const QString label = pane->isConnected() ? baseTitle : QStringLiteral("%1 [离线]").arg(baseTitle);
+    const QString label = pane->isConnected() ? baseTitle
+                                              : Localization::translateText(QStringLiteral("%1 [离线]").arg(baseTitle));
     m_tabWidget->setTabText(index, label);
     m_tabWidget->setTabToolTip(index, pane->profile().subtitle());
 }
