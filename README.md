@@ -151,6 +151,30 @@ Release output:
 - [`dist/WjSsh`](/D:/wj/CodeX/WjSsh/dist/WjSsh)
 - [`dist/WjSsh-win64.zip`](/D:/wj/CodeX/WjSsh/dist/WjSsh-win64.zip)
 
+## GitHub Actions
+
+The repository includes a Windows packaging workflow:
+
+- [`.github/workflows/windows-release.yml`](/D:/wj/CodeX/WjSsh/.github/workflows/windows-release.yml)
+
+What it does:
+
+- builds the project on `windows-latest`
+- installs the required MSYS2 UCRT64 packages
+- runs the existing `build_release.ps1` packaging script
+- uploads the generated portable package as a workflow artifact
+- publishes `dist/WjSsh-win64.zip` to a GitHub Release when the pushed tag starts with `v`
+
+Example tag for a release:
+
+```text
+v0.1.0
+```
+
+Release notes template:
+
+- [`.github/RELEASE_TEMPLATE.md`](/D:/wj/CodeX/WjSsh/.github/RELEASE_TEMPLATE.md)
+
 ## Current Notes
 
 - WjSsh uses the remote system's existing SSH and SFTP services. No extra server-side installation is required.
@@ -163,6 +187,10 @@ Release output:
 - Qt 6 Widgets
 - libssh
 - CMake + Ninja
+
+## License
+
+This project uses the MIT License.
 
 ## Repository Description
 
