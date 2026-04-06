@@ -93,21 +93,63 @@ function Invoke-GitHubApi {
         [string]$Method,
         [string]$Uri,
         [hashtable]$Headers,
-        [object]$Body = $null
+        [object]$Body = $null,
+        [int]$MaxAttempts = 4,
+        [switch]$RetryOnNotFound
     )
 
-    $params = @{
-        Method  = $Method
-        Uri     = $Uri
-        Headers = $Headers
-    }
+    $attempt = 0
+    do {
+        $attempt++
+        $params = @{
+            Method  = $Method
+            Uri     = $Uri
+            Headers = $Headers
+        }
 
-    if ($null -ne $Body) {
-        $params.ContentType = "application/json"
-        $params.Body = ($Body | ConvertTo-Json -Depth 100)
-    }
+        if ($null -ne $Body) {
+            $params.ContentType = "application/json"
+            $params.Body = ($Body | ConvertTo-Json -Depth 100)
+        }
 
-    return Invoke-RestMethod @params
+        try {
+            return Invoke-RestMethod @params
+        } catch {
+            $response = $_.Exception.Response
+            $statusCode = $null
+            $responseBody = $null
+
+            if ($null -ne $response) {
+                $statusCode = [int]$response.StatusCode
+                try {
+                    $stream = $response.GetResponseStream()
+                    if ($null -ne $stream) {
+                        $reader = New-Object IO.StreamReader($stream)
+                        $responseBody = $reader.ReadToEnd()
+                        $reader.Dispose()
+                    }
+                } catch {
+                }
+            }
+
+            $retryableStatusCodes = @(400, 408, 409, 429, 500, 502, 503, 504)
+            if ($RetryOnNotFound) {
+                $retryableStatusCodes += 404
+            }
+
+            $shouldRetry = $attempt -lt $MaxAttempts -and $statusCode -in $retryableStatusCodes
+            if ($shouldRetry) {
+                Start-Sleep -Seconds ([Math]::Min(2 * $attempt, 8))
+                continue
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
+                throw "GitHub API $Method $Uri failed with status $statusCode. Response: $responseBody"
+            }
+
+            throw
+        }
+    } while ($attempt -lt $MaxAttempts)
 }
 
 function Try-GetRepository {
@@ -314,11 +356,141 @@ function New-Tree {
     )
 
     $payload = @{
-        base_tree = $BaseTreeSha
-        tree      = $TreeElements
+        tree = $TreeElements
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($BaseTreeSha)) {
+        $payload.base_tree = $BaseTreeSha
     }
 
     return Invoke-GitHubApi -Method "POST" -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/git/trees" -Headers $Headers -Body $payload
+}
+
+function Get-Tree {
+    param(
+        [string]$RepoOwner,
+        [string]$RepoName,
+        [string]$TreeSha,
+        [hashtable]$Headers
+    )
+
+    return Invoke-GitHubApi -Method "GET" -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/git/trees/$TreeSha" -Headers $Headers
+}
+
+function Add-TreeFile {
+    param(
+        [hashtable]$Node,
+        [string[]]$Segments,
+        [int]$Index,
+        [string]$BlobSha
+    )
+
+    if ($Index -eq ($Segments.Length - 1)) {
+        $Node.Files[$Segments[$Index]] = $BlobSha
+        return
+    }
+
+    $segment = $Segments[$Index]
+    if (-not $Node.Directories.ContainsKey($segment)) {
+        $Node.Directories[$segment] = @{
+            Files       = @{}
+            Directories = @{}
+        }
+    }
+
+    Add-TreeFile -Node $Node.Directories[$segment] -Segments $Segments -Index ($Index + 1) -BlobSha $BlobSha
+}
+
+function Resolve-ExistingTreeSha {
+    param(
+        [string]$RepoOwner,
+        [string]$RepoName,
+        [string]$DirectoryPath,
+        [string]$RootTreeSha,
+        [hashtable]$Headers,
+        [hashtable]$ExistingTreeCache,
+        [hashtable]$FetchedTreeCache
+    )
+
+    if ($ExistingTreeCache.ContainsKey($DirectoryPath)) {
+        return $ExistingTreeCache[$DirectoryPath]
+    }
+
+    if ([string]::IsNullOrWhiteSpace($DirectoryPath)) {
+        $ExistingTreeCache[$DirectoryPath] = $RootTreeSha
+        return $RootTreeSha
+    }
+
+    $normalizedPath = $DirectoryPath.Replace("\", "/").Trim("/")
+    $lastSlash = $normalizedPath.LastIndexOf("/")
+    if ($lastSlash -ge 0) {
+        $parentPath = $normalizedPath.Substring(0, $lastSlash)
+        $segment = $normalizedPath.Substring($lastSlash + 1)
+    } else {
+        $parentPath = ""
+        $segment = $normalizedPath
+    }
+
+    $parentTreeSha = Resolve-ExistingTreeSha -RepoOwner $RepoOwner -RepoName $RepoName -DirectoryPath $parentPath -RootTreeSha $RootTreeSha -Headers $Headers -ExistingTreeCache $ExistingTreeCache -FetchedTreeCache $FetchedTreeCache
+    if ([string]::IsNullOrWhiteSpace($parentTreeSha)) {
+        $ExistingTreeCache[$DirectoryPath] = $null
+        return $null
+    }
+
+    if (-not $FetchedTreeCache.ContainsKey($parentTreeSha)) {
+        $FetchedTreeCache[$parentTreeSha] = Get-Tree -RepoOwner $RepoOwner -RepoName $RepoName -TreeSha $parentTreeSha -Headers $Headers
+    }
+
+    $parentTree = $FetchedTreeCache[$parentTreeSha]
+    $match = $parentTree.tree | Where-Object { $_.type -eq "tree" -and $_.path -eq $segment } | Select-Object -First 1
+    if ($null -ne $match) {
+        $ExistingTreeCache[$DirectoryPath] = $match.sha
+        return $match.sha
+    }
+
+    $ExistingTreeCache[$DirectoryPath] = $null
+    return $null
+}
+
+function New-NestedTree {
+    param(
+        [string]$RepoOwner,
+        [string]$RepoName,
+        [hashtable]$Node,
+        [string]$DirectoryPath,
+        [string]$RootTreeSha,
+        [hashtable]$Headers,
+        [hashtable]$ExistingTreeCache,
+        [hashtable]$FetchedTreeCache
+    )
+
+    $treeElements = New-Object System.Collections.Generic.List[object]
+
+    foreach ($fileName in ($Node.Files.Keys | Sort-Object)) {
+        $treeElements.Add(@{
+            path = $fileName
+            mode = "100644"
+            type = "blob"
+            sha  = $Node.Files[$fileName]
+        })
+    }
+
+    foreach ($directoryName in ($Node.Directories.Keys | Sort-Object)) {
+        $childPath = if ([string]::IsNullOrWhiteSpace($DirectoryPath)) { $directoryName } else { "$DirectoryPath/$directoryName" }
+        $childTreeSha = New-NestedTree -RepoOwner $RepoOwner -RepoName $RepoName -Node $Node.Directories[$directoryName] -DirectoryPath $childPath -RootTreeSha $RootTreeSha -Headers $Headers -ExistingTreeCache $ExistingTreeCache -FetchedTreeCache $FetchedTreeCache
+        $treeElements.Add(@{
+            path = $directoryName
+            mode = "040000"
+            type = "tree"
+            sha  = $childTreeSha
+        })
+    }
+
+    $baseTreeShaForNode = Resolve-ExistingTreeSha -RepoOwner $RepoOwner -RepoName $RepoName -DirectoryPath $DirectoryPath -RootTreeSha $RootTreeSha -Headers $Headers -ExistingTreeCache $ExistingTreeCache -FetchedTreeCache $FetchedTreeCache
+    $tree = New-Tree -RepoOwner $RepoOwner -RepoName $RepoName -BaseTreeSha $baseTreeShaForNode -TreeElements $treeElements.ToArray() -Headers $Headers
+    $ExistingTreeCache[$DirectoryPath] = $tree.sha
+    $FetchedTreeCache[$tree.sha] = $tree
+    return $tree.sha
 }
 
 function New-CommitObject {
@@ -354,7 +526,65 @@ function Update-BranchRef {
         force = $false
     }
 
-    return Invoke-GitHubApi -Method "PATCH" -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/git/refs/heads/$BranchName" -Headers $Headers -Body $payload
+    return Invoke-GitHubApi -Method "PATCH" -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/git/refs/heads/$BranchName" -Headers $Headers -Body $payload -RetryOnNotFound
+}
+
+function Get-EncodedRepositoryPath {
+    param([string]$RepoPath)
+
+    $segments = $RepoPath.Replace("\", "/").Split("/")
+    $encodedSegments = foreach ($segment in $segments) {
+        [System.Uri]::EscapeDataString($segment)
+    }
+    return ($encodedSegments -join "/")
+}
+
+function Try-GetContentItem {
+    param(
+        [string]$RepoOwner,
+        [string]$RepoName,
+        [string]$RepoPath,
+        [string]$BranchName,
+        [hashtable]$Headers
+    )
+
+    $encodedPath = Get-EncodedRepositoryPath -RepoPath $RepoPath
+    $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/contents/$encodedPath?ref=$([System.Uri]::EscapeDataString($BranchName))"
+    try {
+        return Invoke-GitHubApi -Method "GET" -Uri $uri -Headers $Headers
+    } catch {
+        if ($_.Exception.Response -and $_.Exception.Response.StatusCode.Value__ -eq 404) {
+            return $null
+        }
+        throw
+    }
+}
+
+function Upsert-ContentFile {
+    param(
+        [string]$RepoOwner,
+        [string]$RepoName,
+        [string]$RepoPath,
+        [byte[]]$Bytes,
+        [string]$BranchName,
+        [string]$Message,
+        [hashtable]$Headers
+    )
+
+    $existingItem = Try-GetContentItem -RepoOwner $RepoOwner -RepoName $RepoName -RepoPath $RepoPath -BranchName $BranchName -Headers $Headers
+    $payload = @{
+        message = $Message
+        content = [Convert]::ToBase64String($Bytes)
+        branch  = $BranchName
+    }
+
+    if ($null -ne $existingItem -and -not [string]::IsNullOrWhiteSpace($existingItem.sha)) {
+        $payload.sha = $existingItem.sha
+    }
+
+    $encodedPath = Get-EncodedRepositoryPath -RepoPath $RepoPath
+    $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/contents/$encodedPath"
+    return Invoke-GitHubApi -Method "PUT" -Uri $uri -Headers $Headers -Body $payload
 }
 
 $resolvedSourceRoot = Resolve-SourceRoot -PathValue $SourceRoot
@@ -388,27 +618,48 @@ $parentSha = $branchRef.object.sha
 $parentCommit = Get-Commit -RepoOwner $Owner -RepoName $RepositoryName -CommitSha $parentSha -Headers $headers
 $baseTreeSha = $parentCommit.tree.sha
 
-$treeElements = New-Object System.Collections.Generic.List[object]
+$rootNode = @{
+    Files       = @{}
+    Directories = @{}
+}
 $index = 0
 foreach ($file in $files) {
     $index++
     Write-Host ("[{0}/{1}] {2}" -f $index, $files.Count, $file.RepoPath)
     $bytes = [IO.File]::ReadAllBytes($file.FullName)
     $blob = New-Blob -RepoOwner $Owner -RepoName $RepositoryName -Bytes $bytes -Headers $headers
-    $treeElements.Add(@{
-        path = $file.RepoPath
-        mode = "100644"
-        type = "blob"
-        sha  = $blob.sha
-    })
+    $segments = $file.RepoPath.Split("/")
+    Add-TreeFile -Node $rootNode -Segments $segments -Index 0 -BlobSha $blob.sha
 }
 
-$tree = New-Tree -RepoOwner $Owner -RepoName $RepositoryName -BaseTreeSha $baseTreeSha -TreeElements $treeElements.ToArray() -Headers $headers
-$commit = New-CommitObject -RepoOwner $Owner -RepoName $RepositoryName -Message $CommitMessage -TreeSha $tree.sha -ParentSha $parentSha -Headers $headers
-Update-BranchRef -RepoOwner $Owner -RepoName $RepositoryName -BranchName $branchName -CommitSha $commit.sha -Headers $headers | Out-Null
+$existingTreeCache = @{}
+$fetchedTreeCache = @{}
+try {
+    $treeSha = New-NestedTree -RepoOwner $Owner -RepoName $RepositoryName -Node $rootNode -DirectoryPath "" -RootTreeSha $baseTreeSha -Headers $headers -ExistingTreeCache $existingTreeCache -FetchedTreeCache $fetchedTreeCache
+    $tree = @{ sha = $treeSha }
+    $commit = New-CommitObject -RepoOwner $Owner -RepoName $RepositoryName -Message $CommitMessage -TreeSha $tree.sha -ParentSha $parentSha -Headers $headers
+    Update-BranchRef -RepoOwner $Owner -RepoName $RepositoryName -BranchName $branchName -CommitSha $commit.sha -Headers $headers | Out-Null
+
+    Write-Host ""
+    Write-Host "Repository URL: $($repo.html_url)"
+    Write-Host "Branch: $branchName"
+    Write-Host "Commit: $($commit.sha)"
+    Write-Host "Uploaded files: $($files.Count)"
+    exit 0
+} catch {
+    Write-Warning "Git database upload failed. Falling back to GitHub contents API."
+    Write-Warning $_
+}
+
+$index = 0
+foreach ($file in $files) {
+    $index++
+    Write-Host ("[{0}/{1}] {2} (contents API)" -f $index, $files.Count, $file.RepoPath)
+    $bytes = [IO.File]::ReadAllBytes($file.FullName)
+    Upsert-ContentFile -RepoOwner $Owner -RepoName $RepositoryName -RepoPath $file.RepoPath -Bytes $bytes -BranchName $branchName -Message $CommitMessage -Headers $headers | Out-Null
+}
 
 Write-Host ""
 Write-Host "Repository URL: $($repo.html_url)"
 Write-Host "Branch: $branchName"
-Write-Host "Commit: $($commit.sha)"
 Write-Host "Uploaded files: $($files.Count)"
