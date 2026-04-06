@@ -526,7 +526,27 @@ function Update-BranchRef {
         force = $false
     }
 
-    return Invoke-GitHubApi -Method "PATCH" -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/git/refs/heads/$BranchName" -Headers $Headers -Body $payload -RetryOnNotFound
+    $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/git/refs/heads/$BranchName"
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        try {
+            return Invoke-RestMethod -Method "PATCH" -Uri $uri -Headers $Headers -ContentType "application/json" -Body ($payload | ConvertTo-Json -Depth 20)
+        } catch {
+            $statusCode = $null
+            if ($_.Exception.Response) {
+                try {
+                    $statusCode = [int]$_.Exception.Response.StatusCode
+                } catch {
+                }
+            }
+
+            if ($attempt -lt 6 -and ($statusCode -eq 404 -or $statusCode -eq 409 -or $statusCode -eq 422)) {
+                Start-Sleep -Seconds ([Math]::Min($attempt * 2, 10))
+                continue
+            }
+
+            throw
+        }
+    }
 }
 
 function Get-EncodedRepositoryPath {
@@ -549,12 +569,17 @@ function Try-GetContentItem {
     )
 
     $encodedPath = Get-EncodedRepositoryPath -RepoPath $RepoPath
-    $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/contents/$encodedPath?ref=$([System.Uri]::EscapeDataString($BranchName))"
+    $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/contents/${encodedPath}?ref=$([System.Uri]::EscapeDataString($BranchName))"
     try {
-        return Invoke-GitHubApi -Method "GET" -Uri $uri -Headers $Headers
+        return Invoke-RestMethod -Method "GET" -Uri $uri -Headers $Headers
     } catch {
-        if ($_.Exception.Response -and $_.Exception.Response.StatusCode.Value__ -eq 404) {
-            return $null
+        if ($_.Exception.Response) {
+            try {
+                if ([int]$_.Exception.Response.StatusCode -eq 404) {
+                    return $null
+                }
+            } catch {
+            }
         }
         throw
     }
@@ -578,13 +603,43 @@ function Upsert-ContentFile {
         branch  = $BranchName
     }
 
-    if ($null -ne $existingItem -and -not [string]::IsNullOrWhiteSpace($existingItem.sha)) {
-        $payload.sha = $existingItem.sha
+    if ($null -ne $existingItem -and -not [string]::IsNullOrWhiteSpace([string]$existingItem.sha)) {
+        $payload.sha = [string]$existingItem.sha
     }
 
     $encodedPath = Get-EncodedRepositoryPath -RepoPath $RepoPath
     $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/contents/$encodedPath"
-    return Invoke-GitHubApi -Method "PUT" -Uri $uri -Headers $Headers -Body $payload
+    $body = $payload | ConvertTo-Json -Depth 20
+
+    try {
+        return Invoke-RestMethod -Method "PUT" -Uri $uri -Headers $Headers -ContentType "application/json" -Body $body
+    } catch {
+        $statusCode = $null
+        $responseText = ""
+        if ($_.Exception.Response) {
+            try {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream) {
+                    $reader = New-Object IO.StreamReader($stream)
+                    $responseText = $reader.ReadToEnd()
+                    $reader.Dispose()
+                }
+            } catch {
+            }
+        }
+
+        $needsShaRetry = $statusCode -eq 422 -and $responseText -like '*"sha" wasn''t supplied*'
+        if ($needsShaRetry) {
+            $refreshedItem = Try-GetContentItem -RepoOwner $RepoOwner -RepoName $RepoName -RepoPath $RepoPath -BranchName $BranchName -Headers $Headers
+            if ($null -ne $refreshedItem -and -not [string]::IsNullOrWhiteSpace([string]$refreshedItem.sha)) {
+                $payload.sha = [string]$refreshedItem.sha
+                return Invoke-RestMethod -Method "PUT" -Uri $uri -Headers $Headers -ContentType "application/json" -Body ($payload | ConvertTo-Json -Depth 20)
+            }
+        }
+
+        throw
+    }
 }
 
 $resolvedSourceRoot = Resolve-SourceRoot -PathValue $SourceRoot
