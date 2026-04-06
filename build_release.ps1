@@ -6,8 +6,80 @@ $distRoot = Join-Path $root "dist"
 $dist = Join-Path $distRoot "WjSsh"
 $archive = Join-Path $distRoot "WjSsh-win64.zip"
 $installer = Join-Path $distRoot "WjSsh-Setup.exe"
-$msys = "C:\msys64\ucrt64\bin"
-$env:PATH = "$msys;C:\msys64\usr\bin;$env:PATH"
+
+function Find-FirstExistingPath {
+    param([string[]]$Candidates)
+
+    foreach ($candidate in $Candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    return $null
+}
+
+function Resolve-UcrtPrefix {
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if (-not [string]::IsNullOrWhiteSpace($env:MSYSTEM_PREFIX)) {
+        $candidates.Add($env:MSYSTEM_PREFIX)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+        $candidates.Add((Join-Path $env:RUNNER_TEMP "msys64\ucrt64"))
+    }
+
+    $candidates.Add("C:\msys64\ucrt64")
+    $candidates.Add("C:\tools\msys64\ucrt64")
+    $candidates.Add("D:\a\_temp\msys64\ucrt64")
+
+    foreach ($toolName in @("cmake.exe", "windeployqt6.exe")) {
+        $command = Get-Command $toolName -ErrorAction SilentlyContinue
+        if ($null -ne $command -and -not [string]::IsNullOrWhiteSpace($command.Path)) {
+            $binDir = Split-Path -Parent $command.Path
+            $prefix = Split-Path -Parent $binDir
+            if (Test-Path -LiteralPath (Join-Path $prefix "bin\$toolName")) {
+                $candidates.Add($prefix)
+            }
+        }
+    }
+
+    return Find-FirstExistingPath -Candidates $candidates.ToArray()
+}
+
+function Resolve-ToolPath {
+    param(
+        [string]$PreferredPath,
+        [string]$CommandName
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($PreferredPath) -and (Test-Path -LiteralPath $PreferredPath)) {
+        return (Resolve-Path -LiteralPath $PreferredPath).Path
+    }
+
+    $command = Get-Command $CommandName -ErrorAction SilentlyContinue
+    if ($null -ne $command -and -not [string]::IsNullOrWhiteSpace($command.Path)) {
+        return $command.Path
+    }
+
+    throw "Unable to locate $CommandName."
+}
+
+$ucrtPrefix = Resolve-UcrtPrefix
+if ([string]::IsNullOrWhiteSpace($ucrtPrefix)) {
+    throw "Unable to locate the MSYS2 UCRT64 toolchain."
+}
+
+$msys = Join-Path $ucrtPrefix "bin"
+$msysRoot = Split-Path -Parent $ucrtPrefix
+$env:PATH = "$msys;$(Join-Path $msysRoot 'usr\\bin');$env:PATH"
+$cmakeExe = Resolve-ToolPath -PreferredPath (Join-Path $msys "cmake.exe") -CommandName "cmake.exe"
+$windeployqtExe = Resolve-ToolPath -PreferredPath (Join-Path $msys "windeployqt6.exe") -CommandName "windeployqt6.exe"
+$cmakePrefixPath = $ucrtPrefix.Replace("\", "/")
 
 function New-IExpressInstaller {
     param(
@@ -104,8 +176,8 @@ $runtimeLibs = @(
     "libpcre2-8-0.dll"
 )
 
-& "$msys\cmake.exe" -S $root -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/msys64/ucrt64"
-& "$msys\cmake.exe" --build $build --config Release
+& $cmakeExe -S $root -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$cmakePrefixPath
+& $cmakeExe --build $build --config Release
 
 Get-Process WjSsh -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like "$dist*" } |
@@ -129,7 +201,7 @@ if (Test-Path $dist) {
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 Copy-Item (Join-Path $build "WjSsh.exe") $dist -Force
 
-& "$msys\windeployqt6.exe" --release --compiler-runtime --no-translations --no-opengl-sw --dir $dist (Join-Path $dist "WjSsh.exe")
+& $windeployqtExe --release --compiler-runtime --no-translations --no-opengl-sw --dir $dist (Join-Path $dist "WjSsh.exe")
 
 foreach ($lib in $runtimeLibs) {
     Copy-Item (Join-Path $msys $lib) $dist -Force
