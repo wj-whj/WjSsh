@@ -9,6 +9,7 @@ It is designed for remote access without requiring any extra agent, daemon, or h
 - Multi-session SSH workspace with tabbed connections
 - Built-in terminal view for interactive shell access
 - Integrated SFTP browser with file and directory operations
+- Chinese and English UI language switching
 - Session management with password or private key authentication
 - Remote text file preview and editing
 - Recursive directory upload and download
@@ -25,6 +26,7 @@ It is designed for remote access without requiring any extra agent, daemon, or h
 - Terminal input happens directly inside the terminal area
 - Common shell keys such as `Tab`, `Ctrl+C`, and `Ctrl+L` are supported
 - Terminal focus mode and full-screen mode are available for a larger working area
+- The UI language can be switched between Chinese and English without reinstalling
 
 ### SFTP file management
 
@@ -59,10 +61,11 @@ The bottom status bar reflects the currently active remote connection instead of
 
 ## Project Structure
 
-- [`src`](/D:/wj/CodeX/WjSsh/src): application source files
-- [`assets`](/D:/wj/CodeX/WjSsh/assets): icons and visual assets
-- [`build_release.ps1`](/D:/wj/CodeX/WjSsh/build_release.ps1): packaging script for the Windows release build
-- [`CMakeLists.txt`](/D:/wj/CodeX/WjSsh/CMakeLists.txt): CMake project definition
+- [`src`](src): application source files
+- [`assets`](assets): icons and visual assets
+- [`build_release.ps1`](build_release.ps1): packaging script for the Windows release build
+- [`publish_github_release.ps1`](publish_github_release.ps1): helper script for GitHub release publishing
+- [`CMakeLists.txt`](CMakeLists.txt): CMake project definition
 
 ## Build Requirements
 
@@ -89,6 +92,7 @@ The script will:
 - copy required runtime libraries
 - generate a portable release folder
 - generate a zip package
+- generate a per-user Windows installer `WjSsh-Setup.exe`
 
 ## Publish to GitHub
 
@@ -143,19 +147,21 @@ The token can come from:
 Recommended token scope:
 
 - classic personal access token with `repo`
+- add `workflow` as well if you want API-based updates to `.github/workflows/*`
 
 ## Output
 
 Release output:
 
-- [`dist/WjSsh`](/D:/wj/CodeX/WjSsh/dist/WjSsh)
-- [`dist/WjSsh-win64.zip`](/D:/wj/CodeX/WjSsh/dist/WjSsh-win64.zip)
+- `dist/WjSsh`
+- `dist/WjSsh-win64.zip`
+- `dist/WjSsh-Setup.exe`
 
 ## GitHub Actions
 
 The repository includes a Windows packaging workflow:
 
-- [`.github/workflows/windows-release.yml`](/D:/wj/CodeX/WjSsh/.github/workflows/windows-release.yml)
+- [`.github/workflows/windows-release.yml`](.github/workflows/windows-release.yml)
 
 What it does:
 
@@ -163,7 +169,7 @@ What it does:
 - installs the required MSYS2 UCRT64 packages
 - runs the existing `build_release.ps1` packaging script
 - uploads the generated portable package as a workflow artifact
-- publishes `dist/WjSsh-win64.zip` to a GitHub Release when the pushed tag starts with `v`
+- publishes `dist/WjSsh-win64.zip` and `dist/WjSsh-Setup.exe` to a GitHub Release when the pushed tag starts with `v`
 
 Example tag for a release:
 
@@ -173,7 +179,11 @@ v0.1.0
 
 Release notes template:
 
-- [`.github/RELEASE_TEMPLATE.md`](/D:/wj/CodeX/WjSsh/.github/RELEASE_TEMPLATE.md)
+- [`.github/RELEASE_TEMPLATE.md`](.github/RELEASE_TEMPLATE.md)
+
+Manual release publishing helper:
+
+- [`publish_github_release.ps1`](publish_github_release.ps1)
 
 ## Current Notes
 
